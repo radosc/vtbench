@@ -29,7 +29,7 @@ GENERATION_DEFAULTS = {
 
     # CRITICAL: must be >= 1. Without this, Gemma 4 greedy decoding emits
     # EOS immediately on ~33% of images, producing empty answers. This was
-    # the single most confusing bug in early SAVT development — the model
+    # the single most confusing bug discovered during development — the model
     # appeared to "refuse" answering, but it was just a greedy-decoding
     # degenerate mode. Setting min_new_tokens=1 forces at least one real
     # token before EOS is allowed.

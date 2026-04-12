@@ -1,4 +1,4 @@
-"""SAVT — Visual Token Compression Benchmark for Vision-Language Models.
+"""VTBench — Visual Token Compression Benchmark for Vision-Language Models.
 
 Drop-in framework for benchmarking token compression algorithms.
   - Add your algorithm: copy compressors/_template.py, implement compress()

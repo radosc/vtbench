@@ -9,10 +9,10 @@ from all previously selected tokens:
 
 Seed: the token with highest L2 norm (most activated).
 
-This is equivalent to DivPrune with alpha=0.0 but without the
-importance normalization overhead. FPS guarantees that the selected
-subset has maximum minimum pairwise distance — optimal coverage
-of the feature space.
+Similar to DivPrune in objective but differs in seed initialization:
+FPS starts from the highest L2 norm token, while DivPrune (MMDP)
+starts from the pair with maximum pairwise distance. Both guarantee
+that selected tokens maximize minimum pairwise distance.
 
 Computational complexity: O(N * M) where N = input tokens, M = output tokens.
 The cosine similarity matrix is O(N^2) but computed once upfront.

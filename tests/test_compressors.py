@@ -111,38 +111,39 @@ class TestCompressorContract:
 
 class TestDivPrune:
 
-    def test_alpha_0_similar_to_fps(self, features_small):
-        """alpha=0 should behave like pure diversity (similar to FPS)."""
-        dp = DivPrune(alpha=0.0)
-        fps = FPS()
-        dp_out = dp.compress(features_small, 5)
-        fps_out = fps.compress(features_small, 5)
-        # Both should select diverse tokens — same seed (highest norm)
-        # so first selected token should be the same
-        assert dp_out.shape == fps_out.shape
-
-    def test_alpha_1_selects_by_norm(self, features_small):
-        """alpha=1 should select tokens purely by L2 norm (importance only)."""
-        dp = DivPrune(alpha=1.0)
-        out = dp.compress(features_small, 5)
-        # The output should be the 5 tokens with highest norms
-        norms = features_small.float().norm(dim=1)
-        top5_idx = norms.topk(5).indices
-        expected = features_small[top5_idx]
-        # Check same set of tokens (order may differ due to greedy iteration)
+    def test_seed_is_farthest_pair(self, features_small):
+        """DivPrune seeds with the pair of tokens having maximum distance
+        (minimum cosine similarity), per the MMDP formulation."""
+        import torch.nn.functional as F
+        dp = DivPrune()
+        out = dp.compress(features_small, 2)
+        assert len(out) == 2
+        # The output pair should be the global min-similarity pair
+        fn = F.normalize(features_small.float(), dim=1)
+        sim = fn @ fn.T
+        sim_masked = sim.clone()
+        sim_masked.fill_diagonal_(float("inf"))
+        flat = sim_masked.argmin().item()
+        n = len(features_small)
+        expected_pair = {flat // n, flat % n}
         out_set = {tuple(t.tolist()) for t in out}
-        expected_set = {tuple(t.tolist()) for t in expected}
+        expected_set = {tuple(features_small[i].tolist()) for i in expected_pair}
         assert out_set == expected_set
 
-    def test_default_alpha(self):
-        """Default alpha is 0.5."""
+    def test_maximizes_min_distance(self, features_small):
+        """Selected tokens should be spread out (pure MMDP objective)."""
+        import torch.nn.functional as F
         dp = DivPrune()
-        assert dp.alpha == 0.5
+        out = dp.compress(features_small, 5)
+        normed = F.normalize(out.float(), dim=1)
+        sim = normed @ normed.T
+        sim.fill_diagonal_(0)
+        assert sim.max() < 0.99  # no near-duplicates
 
-    def test_custom_alpha(self):
-        """Custom alpha is stored."""
-        dp = DivPrune(alpha=0.7)
-        assert dp.alpha == 0.7
+    def test_no_alpha_parameter(self):
+        """DivPrune is pure MMDP — no importance/diversity mixing."""
+        dp = DivPrune()
+        assert not hasattr(dp, "alpha")
 
 
 class TestFPS:

@@ -59,7 +59,7 @@ Datasets:
   gqa              GQA visual QA                                     [not fetched, ~132000 samples]
 
 Compressors:
-  divprune         Importance-weighted diversity selection
+  divprune         Diversity-based visual token pruning (MMDP)
   fps              Farthest Point Sampling (Gonzalez 1985)
   identity         No compression baseline
 ```
@@ -248,8 +248,8 @@ See `vtbench/models/gemma4/` for a reference implementation with documented sett
 
 | Name | Tokens (2x) | Method | Reference |
 |---|---|---|---|
-| `divprune` | 260 → 130 | Selects tokens that maximize importance (L2 norm) + diversity (cosine distance). Tunable `alpha` parameter balances the two. | DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models, Saeed Ranjbar Alvar, Gursimran Singh, Mohammad Akbari, Yong Zhang, 2025 |
-| `fps` | 260 → 130 | Farthest Point Sampling — greedy max-min cosine distance. Pure spatial coverage, no importance weighting. | Gonzalez, 1985 |
+| `divprune` | 260 → 130 | Pure Max-Min Diversity Problem (MMDP). Seeds with the farthest pair in embedding space, then greedily selects tokens that maximize minimum distance to the selected set. | Alvar, Singh, Akbari, Zhang. "DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models." [arXiv:2503.02175](https://arxiv.org/abs/2503.02175) (2025) |
+| `fps` | 260 → 130 | Farthest Point Sampling — greedy max-min cosine distance. Seeds with the highest L2 norm token. | Gonzalez, 1985 |
 | `identity` | 260 → 130 | Uniform stride subsampling. The floor any real algorithm should beat. | — |
 
 ## Architecture
@@ -260,7 +260,7 @@ vtbench/
 ├── compressors/             # Drop a .py file = new algorithm
 │   ├── _base.py             # Compressor ABC
 │   ├── _template.py         # Copy this to start
-│   ├── divprune.py          # Importance × diversity selection
+│   ├── divprune.py          # Max-Min Diversity Problem (MMDP)
 │   ├── fps.py               # Farthest Point Sampling
 │   └── identity.py          # No-op baseline
 ├── models/                  # Drop a folder = new model

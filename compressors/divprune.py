@@ -1,24 +1,24 @@
-"""DivPrune — importance-weighted diversity token selection.
+"""DivPrune — Diversity-based Visual Token Pruning.
 
-At each step, selects the token that maximizes:
+Formulates token pruning as a Max-Min Diversity Problem (MMDP):
+maximize the minimum pairwise cosine distance among selected tokens.
+No importance heuristic, no L2 norm weighting — pure coverage of the
+feature space.
 
-    score = alpha * importance + (1 - alpha) * diversity
+Algorithm:
+  1. Seed: find the pair (i, j) with maximum cosine distance, i.e. the
+     two tokens that are furthest apart in the embedding space. This is
+     the only initialization that doesn't bias selection toward any
+     particular region.
+  2. Iteratively add the token that maximizes the minimum distance to
+     the already-selected set (greedy MMDP solver).
 
-Where:
-    importance = normalized L2 norm (higher activation = more informative)
-    diversity  = min cosine distance to any already-selected token
+Computational complexity: O(N * M) greedy iterations over a precomputed
+O(N^2) cosine similarity matrix.
 
-Seed: the single most important (highest L2 norm) token.
-
-This balances two objectives:
-  - Keep tokens that carry the most visual information (high activation)
-  - Keep tokens that are maximally different from each other (coverage)
-
-alpha=0.5 (default) weights both equally.
-alpha=1.0 is pure importance ranking (no diversity).
-alpha=0.0 is pure FPS (equivalent to fps.py, but with normalization overhead).
-
-Reference: developed for SAVT visual token compression, 2026.
+Reference:
+  Alvar et al. "DivPrune: Diversity-based Visual Token Pruning for
+  Large Multimodal Models." arXiv:2503.02175 (2025).
 """
 
 import torch
@@ -30,15 +30,7 @@ from vtbench.compressors._base import Compressor
 class DivPrune(Compressor):
 
     name = "divprune"
-    description = "Importance-weighted diversity selection (alpha balances L2-norm vs coverage)"
-
-    def __init__(self, alpha: float = 0.5):
-        """
-        Args:
-            alpha: balance between importance (1.0) and diversity (0.0).
-                   Default 0.5 gives equal weight to both.
-        """
-        self.alpha = alpha
+    description = "Diversity-based visual token pruning (MMDP, Alvar et al. 2025)"
 
     def compress(self, features: torch.Tensor, n_target: int, **ctx) -> torch.Tensor:
         n = len(features)
@@ -48,50 +40,40 @@ class DivPrune(Compressor):
         feat = features.float()
         device = features.device
 
-        # Importance: L2 norm of each token embedding.
-        # Tokens with higher activation magnitude tend to encode more
-        # visually salient content (objects, text, edges vs. flat sky).
-        norms = feat.norm(dim=1)
-        imp_min, imp_max = norms.min(), norms.max()
-        if imp_max > imp_min:
-            importance = (norms - imp_min) / (imp_max - imp_min)
-        else:
-            # All tokens have identical norms — importance is uninformative
-            importance = torch.ones(n, device=device)
-
-        # Pairwise cosine similarity for diversity computation
+        # Pairwise cosine similarity
         fn = F.normalize(feat, dim=1)
         sim = fn @ fn.T
 
-        # Seed: most important token
-        selected = [importance.argmax().item()]
+        # Seed initialization: the pair of tokens with MAXIMUM cosine distance
+        # (minimum similarity). This is the MMDP-correct starting point —
+        # any other seed biases the greedy selection toward a particular
+        # region of the embedding space.
+        sim_for_seed = sim.clone()
+        sim_for_seed.fill_diagonal_(float("inf"))
+        flat_idx = sim_for_seed.argmin().item()
+        i, j = flat_idx // n, flat_idx % n
 
-        # Boolean mask for O(1) exclusion instead of O(k) Python loop.
-        # The old code did `for s in selected: score[s] = -1.0` which
-        # issued k individual GPU scalar writes per iteration — quadratic
-        # total and ~2x slower than FPS on real benchmarks.
         mask = torch.zeros(n, dtype=torch.bool, device=device)
-        mask[selected[0]] = True
 
-        # min_dist[i] = min cosine distance from token i to any selected token.
-        # Starts with distance to the seed.
-        min_dist = (1.0 - sim[selected[0]]).clone()
+        if n_target == 1:
+            # Degenerate case: return one of the farthest pair
+            mask[i] = True
+            return features[[i]]
 
-        for _ in range(n_target - 1):
-            # Diversity: normalized min distance to selected set
-            d_max = min_dist.max()
-            diversity = min_dist / d_max if d_max > 0 else min_dist
+        selected = [i, j]
+        mask[i] = True
+        mask[j] = True
 
-            # Combined score, masked in one vectorized op
-            score = self.alpha * importance + (1.0 - self.alpha) * diversity
-            score[mask] = -1.0
+        # min_dist[k] = min cosine distance from token k to any selected token
+        min_dist = torch.min(1.0 - sim[i], 1.0 - sim[j])
 
-            # Greedy select
-            nx = score.argmax().item()
+        # Greedy MMDP: at each step select the token whose minimum distance
+        # to the already-selected set is largest.
+        for _ in range(n_target - 2):
+            min_dist[mask] = -1.0
+            nx = min_dist.argmax().item()
             selected.append(nx)
             mask[nx] = True
-
-            # Update running min distances
             min_dist = torch.min(min_dist, 1.0 - sim[nx])
 
         return features[selected]
