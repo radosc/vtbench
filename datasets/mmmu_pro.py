@@ -74,7 +74,7 @@ class MMMUPro(DatasetEntry):
                 "image": f"images/{img_name}",
                 "prompt": prompt,
                 "answer": row["answer"],
-                "category": row.get("subfield", "unknown"),
+                "category": row.get("subject") or row.get("subfield") or "unknown",
             })
 
         # Subsample if requested

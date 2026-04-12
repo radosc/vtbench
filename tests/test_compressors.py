@@ -8,6 +8,7 @@ import torch
 
 from vtbench.compressors._base import Compressor
 from vtbench.compressors.divprune import DivPrune
+from vtbench.compressors.divprune_hybrid import DivPruneHybrid
 from vtbench.compressors.fps import FPS
 from vtbench.compressors.identity import Identity
 
@@ -28,8 +29,8 @@ def features_small():
     return torch.randn(10, 64)
 
 
-ALL_COMPRESSORS = [DivPrune(), FPS(), Identity()]
-ALL_IDS = ["divprune", "fps", "identity"]
+ALL_COMPRESSORS = [DivPrune(), DivPruneHybrid(), FPS(), Identity()]
+ALL_IDS = ["divprune", "divprune_hybrid", "fps", "identity"]
 
 
 # --- Contract tests (must pass for ANY Compressor) ---
@@ -144,6 +145,34 @@ class TestDivPrune:
         """DivPrune is pure MMDP — no importance/diversity mixing."""
         dp = DivPrune()
         assert not hasattr(dp, "alpha")
+
+
+class TestDivPruneHybrid:
+
+    def test_default_alpha(self):
+        dp = DivPruneHybrid()
+        assert dp.alpha == 0.5
+
+    def test_custom_alpha(self):
+        dp = DivPruneHybrid(alpha=0.7)
+        assert dp.alpha == 0.7
+
+    def test_alpha_out_of_range_rejected(self):
+        with pytest.raises(ValueError):
+            DivPruneHybrid(alpha=-0.1)
+        with pytest.raises(ValueError):
+            DivPruneHybrid(alpha=1.5)
+
+    def test_alpha_1_selects_by_norm(self, features_small):
+        """alpha=1 should select tokens purely by L2 norm."""
+        dp = DivPruneHybrid(alpha=1.0)
+        out = dp.compress(features_small, 5)
+        norms = features_small.float().norm(dim=1)
+        top5_idx = norms.topk(5).indices
+        expected = features_small[top5_idx]
+        out_set = {tuple(t.tolist()) for t in out}
+        expected_set = {tuple(t.tolist()) for t in expected}
+        assert out_set == expected_set
 
 
 class TestFPS:

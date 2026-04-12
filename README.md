@@ -248,9 +248,68 @@ See `vtbench/models/gemma4/` for a reference implementation with documented sett
 
 | Name | Tokens (2x) | Method | Reference |
 |---|---|---|---|
-| `divprune` | 260 → 130 | Pure Max-Min Diversity Problem (MMDP). Seeds with the farthest pair in embedding space, then greedily selects tokens that maximize minimum distance to the selected set. | Alvar, Singh, Akbari, Zhang. "DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models." [arXiv:2503.02175](https://arxiv.org/abs/2503.02175) (2025) |
-| `fps` | 260 → 130 | Farthest Point Sampling — greedy max-min cosine distance. Seeds with the highest L2 norm token. | Gonzalez, 1985 |
-| `identity` | 260 → 130 | Uniform stride subsampling. The floor any real algorithm should beat. | — |
+| `divprune` | 262 → 131 | Pure Max-Min Diversity Problem (MMDP). Seeds with the farthest pair in embedding space, then greedily selects tokens that maximize minimum distance to the selected set. Paper-faithful implementation. | Alvar, Singh, Akbari, Zhang. "DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models." [arXiv:2503.02175](https://arxiv.org/abs/2503.02175) (2025) |
+| `divprune_hybrid` | 262 → 131 | DivPrune + L2-norm importance weighting. Selects tokens via `score = α · importance + (1 − α) · diversity`. Research extension, not the paper's algorithm. | vtbench |
+| `fps` | 262 → 131 | Farthest Point Sampling — greedy max-min cosine distance. Seeds with the highest L2 norm token. | Gonzalez, 1985 |
+| `identity` | 262 → 131 | Uniform stride subsampling. The floor any real algorithm should beat. | — |
+
+### A note on DivPrune variants
+
+The `divprune` compressor is the paper-faithful implementation: pure MMDP, farthest-pair seed initialization, no importance heuristic. This is what the original authors published and what you should cite or compare against in research contexts.
+
+The `divprune_hybrid` compressor is a research extension developed during vtbench's implementation. The motivation was empirical: we observed that on detail-heavy images (diagrams, microscopy, text-in-image), high-activation tokens often carry the content the question actually asks about. Mixing in an L2-norm importance term seemed like it might preserve those tokens better. It's shipped as a separate, clearly-named compressor so that (a) the paper's algorithm stays unmodified as a reference implementation and (b) researchers can directly compare the two tradeoffs on their own datasets.
+
+The finding below, in short: on MMMU-Pro's broad mix of academic subjects, pure MMDP wins by ~0.8pp, because scene-level understanding matters more than detail retention on that benchmark. **But per-category, the hybrid wins meaningfully on the detail-heavy subjects** (Biology, Mechanical Engineering, Clinical Medicine, Literature, Physics). Which approach is "better" depends entirely on what your benchmark measures.
+
+## Empirical Results: MMMU-Pro on Gemma 4 E4B
+
+Reproducible with:
+
+```bash
+python -m vtbench benchmark \
+  --model gemma-4-E4B-it \
+  --data mmmu_pro \
+  --compressors divprune divprune_hybrid fps \
+  --ratios 0.5 --seed 42
+```
+
+**Aggregate (1592 single-image MMMU-Pro samples, 2x compression, bfloat16):**
+
+| Compressor | Tokens | Accuracy | vs Stock |
+|---|---|---|---|
+| stock | 262 | **38.3%** | — |
+| `divprune` (pure MMDP) | 262→131 | **36.2%** | −2.1pp |
+| `fps` | 262→131 | 35.7% | −2.6pp |
+| `divprune_hybrid` (α=0.5) | 262→131 | 35.4% | −2.9pp |
+
+Pure MMDP `divprune` is the aggregate winner at 2x compression, retaining 94.5% of stock accuracy while cutting vision tokens in half. The paper's diversity-only objective holds up on a heterogeneous benchmark where no single category dominates.
+
+**Per-category highlights (where the hybrid flips ahead):**
+
+| Category | stock | divprune | divprune_hybrid | fps | Hybrid Δ vs MMDP |
+|---|---|---|---|---|---|
+| Biology | 49.0% | 27.5% | **31.4%** | 29.4% | **+3.9pp** |
+| Clinical_Medicine | 29.8% | 26.3% | **29.8%** | 31.6% | **+3.5pp** |
+| Mechanical_Engineering | 35.6% | 35.6% | **39.0%** | 37.3% | **+3.4pp** |
+| Literature | 77.6% | 79.6% | **81.6%** | 77.6% | **+2.0pp** |
+| Accounting | 25.0% | 26.8% | **28.6%** | 28.6% | **+1.8pp** |
+| Physics | 29.3% | 24.1% | **25.9%** | 24.1% | **+1.8pp** |
+
+**Per-category highlights (where pure MMDP holds its lead):**
+
+| Category | stock | divprune | divprune_hybrid | fps | MMDP Δ vs Hybrid |
+|---|---|---|---|---|---|
+| Psychology | 39.1% | **47.8%** | 41.3% | 45.7% | **+6.5pp** |
+| Art | 45.3% | **43.4%** | 37.7% | 39.6% | **+5.7pp** |
+| Pharmacy | 50.0% | **41.3%** | 39.1% | 45.7% | +2.2pp |
+| Basic_Medical_Science | 46.0% | **42.0%** | 40.0% | 38.0% | +2.0pp |
+| Math | 34.5% | **32.8%** | 31.0% | 29.3% | +1.8pp |
+
+**Interpretation.** The hybrid's L2-norm importance term biases selection toward high-activation tokens — which tend to encode text, edges, and fine localized detail. On subjects whose questions depend on reading labels in engineering diagrams, spotting structures in a cell micrograph, or matching fine clinical features, that bias is helpful: you literally need those high-norm tokens. On subjects whose questions require holistic understanding (art interpretation, psychological scene reading), the same bias erodes broad coverage and costs accuracy. Averaged across MMMU-Pro's 30 subjects the scene-coverage loss dominates by 0.8pp, but the per-category picture is much more informative than the aggregate number.
+
+We fully expect the aggregate ordering to flip on benchmarks that concentrate on detail retention (document VQA, chart QA, fine-grained recognition, OCR-in-the-wild). If you're running DivPrune on such benchmarks, we'd be genuinely curious to see how the two variants compare — both are shipped here as first-class compressors so the comparison is one command away.
+
+> Full result JSON with per-sample answers is saved to `results/vtbench_mmmu_4way/results.json` when you run the command above.
 
 ## Architecture
 
@@ -260,7 +319,8 @@ vtbench/
 ├── compressors/             # Drop a .py file = new algorithm
 │   ├── _base.py             # Compressor ABC
 │   ├── _template.py         # Copy this to start
-│   ├── divprune.py          # Max-Min Diversity Problem (MMDP)
+│   ├── divprune.py          # Max-Min Diversity Problem (MMDP, paper-faithful)
+│   ├── divprune_hybrid.py   # DivPrune + L2-norm importance (research extension)
 │   ├── fps.py               # Farthest Point Sampling
 │   └── identity.py          # No-op baseline
 ├── models/                  # Drop a folder = new model
