@@ -248,7 +248,7 @@ See `vtbench/models/gemma4/` for a reference implementation with documented sett
 
 | Name | Tokens (2x) | Method | Reference |
 |---|---|---|---|
-| `divprune` | 260 → 130 | Selects tokens that maximize importance (L2 norm) + diversity (cosine distance). Tunable `alpha` parameter balances the two. | SAVT, 2026 |
+| `divprune` | 260 → 130 | Selects tokens that maximize importance (L2 norm) + diversity (cosine distance). Tunable `alpha` parameter balances the two. | DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models, Saeed Ranjbar Alvar, Gursimran Singh, Mohammad Akbari, Yong Zhang, 2025 |
 | `fps` | 260 → 130 | Farthest Point Sampling — greedy max-min cosine distance. Pure spatial coverage, no importance weighting. | Gonzalez, 1985 |
 | `identity` | 260 → 130 | Uniform stride subsampling. The floor any real algorithm should beat. | — |
 
