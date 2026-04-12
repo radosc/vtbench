@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vtbench"
+version = "0.1.0"
+description = "Visual Token Compression Benchmark for Vision-Language Models"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "transformers>=4.40",
+    "Pillow>=9.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+mmmu = ["datasets>=2.0"]
+quantize = ["bitsandbytes>=0.43"]
+dev = ["pytest>=7.0"]
+all = ["datasets>=2.0", "bitsandbytes>=0.43", "pytest>=7.0"]
+
+[project.scripts]
+vtbench = "vtbench.cli:main"
+
+# Package layout: pyproject.toml lives inside the vtbench/ directory,
+# so the current directory IS the vtbench package. We use package-dir
+# to map "vtbench" -> "." (the directory containing this file).
+[tool.setuptools]
+package-dir = {"vtbench" = "."}
+packages = [
+    "vtbench",
+    "vtbench.compressors",
+    "vtbench.models",
+    "vtbench.models.gemma4",
+    "vtbench.datasets",
+    "vtbench.benchmark",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
