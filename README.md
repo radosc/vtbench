@@ -248,7 +248,7 @@ See `vtbench/models/gemma4/` for a reference implementation with documented sett
 
 | Name | Tokens (2x) | Method | Reference |
 |---|---|---|---|
-| `divprune` | 262 → 131 | Pure Max-Min Diversity Problem (MMDP). Seeds with the farthest pair in embedding space, then greedily selects tokens that maximize minimum distance to the selected set. Paper-faithful implementation. | Alvar, Singh, Akbari, Zhang. "DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models." [arXiv:2503.02175](https://arxiv.org/abs/2503.02175) (2025) |
+| `divprune` | 262 → 131 | Pure Max-Min Diversity Problem (MMDP). Seeds with the farthest pair in embedding space, then greedily selects tokens that maximize minimum distance to the selected set. Paper-faithful implementation. | Alvar, Singh, Akbari, Zhang. "DivPrune: Diversity-based Visual Token Pruning for Large Multimodal Models." [arXiv:2503.02175](https://arxiv.org/abs/2503.02175) (2025) https://github.com/vbdi/divprune |
 | `divprune_hybrid` | 262 → 131 | DivPrune + L2-norm importance weighting. Selects tokens via `score = α · importance + (1 − α) · diversity`. Research extension, not the paper's algorithm. | vtbench |
 | `fps` | 262 → 131 | Farthest Point Sampling — greedy max-min cosine distance. Seeds with the highest L2 norm token. | Gonzalez, 1985 |
 | `identity` | 262 → 131 | Uniform stride subsampling. The floor any real algorithm should beat. | — |
